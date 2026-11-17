@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>原神启动</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #000;
+  font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+.stage {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  background: #000;
+  overflow: hidden;
+}
+
+/* 加载进度条 */
+.loader {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+  z-index: 10;
+  transition: opacity .8s ease;
+}
+.loader .logo-text {
+  color: #fff;
+  font-size: 28px;
+  letter-spacing: 8px;
+  margin-bottom: 40px;
+  opacity: .9;
+}
+.loader .bar-wrap {
+  width: 240px;
+  height: 4px;
+  background: rgba(255,255,255,.15);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.loader .bar-fill {
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, #4a90e2, #7ec8e3);
+  transition: width .3s ease;
+}
+.loader .pct {
+  color: rgba(255,255,255,.5);
+  font-size: 12px;
+  margin-top: 12px;
+}
+.loader.done {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* 粒子画布 */
+#particles {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
+/* 中央光球 */
+.orb {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 120px;
+  height: 120px;
+  margin: -60px 0 0 -60px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(126,200,227,.9) 0%, rgba(74,144,226,.4) 50%, transparent 70%);
+  box-shadow: 0 0 60px 20px rgba(126,200,227,.3), 0 0 120px 40px rgba(74,144,226,.15);
+  z-index: 2;
+  animation: pulse 2s ease-in-out infinite;
+  opacity: 0;
+  transition: opacity 1.5s ease;
+}
+.orb.show { opacity: 1; }
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+}
+
+/* 环绕文字 */
+.ring-text {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 2;
+  opacity: 0;
+  transition: opacity 1.5s ease;
+  pointer-events: none;
+}
+.ring-text.show { opacity: 1; }
+.ring-text span {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  color: rgba(255,255,255,.6);
+  font-size: 14px;
+  letter-spacing: 2px;
+  text-shadow: 0 0 8px rgba(126,200,227,.5);
+  white-space: nowrap;
+  animation: ringDrift 8s linear infinite;
+}
+@keyframes ringDrift {
+  from { transform: rotate(0deg) translateX(140px) rotate(0deg); }
+  to { transform: rotate(360deg) translateX(140px) rotate(-360deg); }
+}
+
+/* 中央大标题 */
+.title {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 3;
+  text-align: center;
+  opacity: 0;
+  transition: opacity 1s ease;
+  pointer-events: none;
+}
+.title.show { opacity: 1; }
+.title h1 {
+  font-size: 42px;
+  font-weight: 300;
+  color: #fff;
+  letter-spacing: 6px;
+  text-shadow: 0 0 20px rgba(126,200,227,.6);
+}
+.title h2 {
+  font-size: 20px;
+  font-weight: 300;
+  color: rgba(255,255,255,.85);
+  letter-spacing: 4px;
+  margin-top: 12px;
+}
+
+/* 启动按钮 */
+.launch-btn {
+  position: absolute;
+  bottom: 12%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  padding: 12px 48px;
+  background: transparent;
+  border: 1px solid rgba(126,200,227,.5);
+  color: rgba(255,255,255,.9);
+  font-size: 16px;
+  letter-spacing: 4px;
+  cursor: pointer;
+  transition: all .3s ease;
+  opacity: 0;
+  pointer-events: none;
+  border-radius: 2px;
+}
+.launch-btn.show {
+  opacity: 1;
+  pointer-events: auto;
+}
+.launch-btn:hover {
+  background: rgba(126,200,227,.15);
+  border-color: rgba(126,200,227,.8);
+  box-shadow: 0 0 30px rgba(126,200,227,.3);
+}
+
+/* 中央白色扩散圆环（JS 控制） */
+.wave {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(circle,
+      #ffffff 0%,
+      #ffffff 55%,
+      rgba(255,255,255,.95) 70%,
+      rgba(126,200,227,.4) 85%,
+      transparent 100%);
+  z-index: 30;
+  opacity: 0;
+  pointer-events: none;
+  box-shadow:
+    0 0 80px 40px rgba(255,255,255,.8),
+    0 0 160px 80px rgba(126,200,227,.4);
+}
+
+/* 全屏白底（扩散结束后铺满） */
+.white-fill {
+  position: absolute;
+  inset: 0;
+  background: #fff;
+  z-index: 29;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .4s ease;
+}
+
+/* 抽搐/电视雪花画布（JS 控制） */
+#glitch {
+  position: absolute;
+  inset: 0;
+  z-index: 35;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* 最终画面：白底 + 癫痫提示 */
+.final {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  opacity: 0;
+  pointer-events: none;
+  background: #fff;
+  transition: opacity 1.2s ease;
+}
+.final.show {
+  opacity: 1;
+  pointer-events: auto;
+}
+.final .warn-icon {
+  font-size: 48px;
+  margin-bottom: 24px;
+  animation: warnPulse 1.6s ease-in-out infinite;
+}
+@keyframes warnPulse {
+  0%, 100% { opacity: .5; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.1); }
+}
+.final .big {
+  font-size: 40px;
+  font-weight: 600;
+  color: #1a1a1a;
+  letter-spacing: 6px;
+  text-align: center;
+  line-height: 1.4;
+}
+.final .sub {
+  font-size: 16px;
+  color: #555;
+  margin-top: 20px;
+  letter-spacing: 3px;
+  max-width: 480px;
+  text-align: center;
+  line-height: 1.8;
+}
+.final .tag {
+  margin-top: 32px;
+  font-size: 13px;
+  color: #999;
+  letter-spacing: 4px;
+  border: 1px solid #ddd;
+  padding: 6px 20px;
+  border-radius: 2px;
+}
+
+/* 启动失败面板 */
+.fail {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  background: #000;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .6s ease;
+}
+.fail.show { opacity: 1; pointer-events: auto; }
+.fail .x-icon {
+  width: 80px;
+  height: 80px;
+  margin-bottom: 28px;
+  position: relative;
+  opacity: 0;
+  animation: xPop .5s ease forwards;
+}
+.fail.show .x-icon { animation-delay: .2s; }
+.fail .x-icon::before,
+.fail .x-icon::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 100%;
+  height: 10px;
+  background: #e74c3c;
+  border-radius: 5px;
+  box-shadow: 0 0 20px rgba(231,76,60,.6);
+}
+.fail .x-icon::before { transform: translate(-50%,-50%) rotate(45deg); }
+.fail .x-icon::after { transform: translate(-50%,-50%) rotate(-45deg); }
+@keyframes xPop {
+  0% { opacity: 0; transform: scale(2); }
+  100% { opacity: 1; transform: scale(1); }
+}
+.fail .big {
+  font-size: 44px;
+  font-weight: 300;
+  color: #fff;
+  letter-spacing: 10px;
+  opacity: 0;
+  animation: failFadeIn .8s ease forwards;
+}
+.fail.show .big { animation-delay: .4s; }
+.fail .sub {
+  font-size: 14px;
+  color: rgba(255,255,255,.4);
+  letter-spacing: 4px;
+  margin-top: 16px;
+  opacity: 0;
+  animation: failFadeIn .8s ease forwards;
+}
+.fail.show .sub { animation-delay: .7s; }
+@keyframes failFadeIn {
+  to { opacity: 1; }
+}
+
+/* 可重试的重新启动按钮 */
+.retry-btn {
+  margin-top: 48px;
+  padding: 10px 40px;
+  background: transparent;
+  border: 1px solid rgba(255,255,255,.3);
+  color: rgba(255,255,255,.7);
+  font-size: 14px;
+  letter-spacing: 4px;
+  cursor: pointer;
+  border-radius: 2px;
+  opacity: 0;
+  animation: failFadeIn .8s ease forwards;
+  transition: all .3s ease;
+}
+.fail.show .retry-btn { animation-delay: 1s; }
+.retry-btn:hover {
+  border-color: rgba(126,200,227,.7);
+  color: #fff;
+  background: rgba(126,200,227,.1);
+}
+</style>
+</head>
+<body>
+<div class="stage">
+  <canvas id="particles"></canvas>
+  <div class="orb" id="orb"></div>
+
+  <div class="ring-text" id="ringText"></div>
+
+  <div class="title" id="title">
+    <h1>GENSHIN IMPACT</h1>
+    <h2>原 神</h2>
+  </div>
+
+  <button class="launch-btn" id="launchBtn">启 动</button>
+
+  <div class="white-fill" id="whiteFill"></div>
+  <div class="wave" id="wave"></div>
+
+  <canvas id="glitch"></canvas>
+
+  <div class="final" id="final">
+    <div class="warn-icon">⚠️</div>
+    <div class="big">光敏性癫痫警告</div>
+    <div class="sub">
+      本页面包含快速变化的光影画面。<br>
+      若您患有光敏性癫痫或对闪烁画面敏感，<br>
+      请勿点击「启动」按钮。
+    </div>
+    <div class="tag">GENSHIN IMPACT · LAUNCH</div>
+  </div>
+
+  <div class="fail" id="fail">
+    <div class="x-icon"></div>
+    <div class="big">启动失败</div>
+    <div class="sub">CONNECTION TO Teyvat LOST · RETRY IN 2S</div>
+    <button class="retry-btn" id="retryBtn">重 试</button>
+  </div>
+
+  <div class="loader" id="loader">
+    <div class="logo-text">G E N S H I N &nbsp; I M P A C T</div>
+    <div class="bar-wrap"><div class="bar-fill" id="barFill"></div></div>
+    <div class="pct" id="pct">0%</div>
+  </div>
+</div>
+
+<script>
+/* ========== 音效（Web Audio 生成，无外部文件） ========== */
+let audioCtx = null;
+function initAudio() {
+  if (audioCtx) return;
+  try {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  } catch (e) { audioCtx = null; }
+}
+
+function playChime(freq, dur = 0.4, vol = 0.15) {
+  if (!audioCtx) return;
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  o.type = 'sine';
+  o.frequency.value = freq;
+  g.gain.setValueAtTime(vol, audioCtx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+  o.connect(g);
+  g.connect(audioCtx.destination);
+  o.start();
+  o.stop(audioCtx.currentTime + dur);
+}
+
+function playLaunch() {
+  if (!audioCtx) return;
+  [523.25, 659.25, 783.99, 1046.5, 1318.5].forEach((f, i) => {
+    setTimeout(() => playChime(f, 0.6, 0.12), i * 80);
+  });
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  o.type = 'sawtooth';
+  o.frequency.value = 55;
+  g.gain.setValueAtTime(0.08, audioCtx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 1.5);
+  o.connect(g);
+  g.connect(audioCtx.destination);
+  o.start();
+  o.stop(audioCtx.currentTime + 1.5);
+}
+
+function playGlitch() {
+  // 静电噪声 + 失真
+  if (!audioCtx) return;
+  const bufferSize = audioCtx.sampleRate * 1.5;
+  const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) {
+    data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
+  }
+  const src = audioCtx.createBufferSource();
+  src.buffer = buffer;
+  const g = audioCtx.createGain();
+  g.gain.value = 0.15;
+  src.connect(g);
+  g.connect(audioCtx.destination);
+  src.start();
+  // 低频失谐
+  const o = audioCtx.createOscillator();
+  const g2 = audioCtx.createGain();
+  o.type = 'sawtooth';
+  o.frequency.value = 40 + Math.random() * 40;
+  g2.gain.setValueAtTime(0.06, audioCtx.currentTime);
+  g2.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 1.5);
+  o.connect(g2);
+  g2.connect(audioCtx.destination);
+  o.start();
+  o.stop(audioCtx.currentTime + 1.5);
+}
+
+function playFail() {
+  // 下行失败音
+  if (!audioCtx) return;
+  [392, 330, 262, 196].forEach((f, i) => {
+    setTimeout(() => playChime(f, 0.5, 0.1), i * 120);
+  });
+}
+
+/* ========== 粒子系统 ========== */
+const canvas = document.getElementById('particles');
+const ctx = canvas.getContext('2d');
+let W, H, particles = [];
+
+function resize() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  const g = document.getElementById('glitch');
+  g.width = W;
+  g.height = H;
+}
+window.addEventListener('resize', resize);
+resize();
+
+class Particle {
+  constructor() { this.reset(); }
+  reset() {
+    this.x = Math.random() * W;
+    this.y = H + Math.random() * 40;
+    this.r = Math.random() * 2.5 + 0.5;
+    this.vy = -(Math.random() * 1.2 + 0.3);
+    this.vx = (Math.random() - 0.5) * 0.4;
+    this.alpha = Math.random() * 0.6 + 0.2;
+    this.color = Math.random() > 0.5 ? '126,200,227' : '255,255,255';
+  }
+  update() {
+    this.x += this.vx;
+    this.y += this.vy;
+    if (this.y < -20 || this.x < -20 || this.x > W + 20) this.reset();
+  }
+  draw() {
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(${this.color},${this.alpha})`;
+    ctx.fill();
+  }
+}
+
+for (let i = 0; i < 120; i++) particles.push(new Particle());
+
+function animate() {
+  ctx.clearRect(0, 0, W, H);
+  particles.forEach(p => { p.update(); p.draw(); });
+  requestAnimationFrame(animate);
+}
+animate();
+
+/* ========== 环绕文字 ========== */
+const words = ['WIND', 'WATER', 'FIRE', 'ELECTRO', 'ICE', 'CRYSTAL', 'ERUPTION', 'SWORD'];
+const ringText = document.getElementById('ringText');
+words.forEach((w, i) => {
+  const s = document.createElement('span');
+  s.textContent = w;
+  s.style.animationDelay = (i * (8 / words.length)) + 's';
+  ringText.appendChild(s);
+});
+
+/* ========== 加载进度 ========== */
+const loader = document.getElementById('loader');
+const barFill = document.getElementById('barFill');
+const pct = document.getElementById('pct');
+let progress = 0;
+
+function stepProgress() {
+  progress += Math.random() * 12 + 3;
+  if (progress > 100) progress = 100;
+  barFill.style.width = progress + '%';
+  pct.textContent = Math.floor(progress) + '%';
+  if (progress < 100) {
+    setTimeout(stepProgress, Math.random() * 300 + 100);
+  } else {
+    setTimeout(() => {
+      loader.classList.add('done');
+      showLaunchScene();
+    }, 400);
+  }
+}
+
+function showLaunchScene() {
+  document.getElementById('orb').classList.add('show');
+  document.getElementById('title').classList.add('show');
+  document.getElementById('ringText').classList.add('show');
+  document.getElementById('launchBtn').classList.add('show');
+}
+stepProgress();
+
+/* ========== 启动：中心白色加速扩散 → 全屏白 → 渐显癫痫提示 ========== */
+const launchBtn = document.getElementById('launchBtn');
+const wave = document.getElementById('wave');
+const whiteFill = document.getElementById('whiteFill');
+const finalPanel = document.getElementById('final');
+const failPanel = document.getElementById('fail');
+const retryBtn = document.getElementById('retryBtn');
+const glitchCanvas = document.getElementById('glitch');
+const glitchCtx = glitchCanvas.getContext('2d');
+
+let launched = false;
+
+function expandToFullScreen(duration, onDone) {
+  const maxRadius = Math.hypot(W, H);
+  const start = performance.now();
+  wave.style.opacity = '1';
+
+  function tick(now) {
+    const t = Math.min((now - start) / duration, 1);
+    const eased = t * t * t; // ease-in-cubic：先慢后快
+    const radius = eased * maxRadius;
+    const size = radius * 2;
+    wave.style.width = size + 'px';
+    wave.style.height = size + 'px';
+    wave.style.filter = `blur(${(1 - eased) * 4}px)`;
+
+    if (t < 1) {
+      requestAnimationFrame(tick);
+    } else {
+      whiteFill.style.opacity = '1';
+      wave.style.opacity = '0';
+      onDone();
+    }
+  }
+  requestAnimationFrame(tick);
+}
+
+launchBtn.addEventListener('click', () => {
+  if (launched) return;
+  launched = true;
+
+  initAudio();
+  playLaunch();
+
+  document.getElementById('title').classList.remove('show');
+  document.getElementById('ringText').classList.remove('show');
+  document.getElementById('orb').classList.remove('show');
+  launchBtn.classList.remove('show');
+
+  expandToFullScreen(1200, () => {
+    setTimeout(() => finalPanel.classList.add('show'), 150);
+
+    // 癫痫提示显示 2 秒后，进入抽搐/电视雪花
+    setTimeout(() => {
+      finalPanel.classList.remove('show');
+      whiteFill.style.opacity = '0';
+      playGlitch();
+      runGlitchSequence();
+    }, 2000);
+  });
+});
+
+/* ========== 抽搐 + 电视雪花（随机闪烁 + 噪点 + 撕裂） ========== */
+function runGlitchSequence() {
+  const duration = 3000;
+  const start = performance.now();
+  glitchCanvas.style.opacity = '1';
+
+  function tick(now) {
+    const t = (now - start) / duration;
+    if (t >= 1) {
+      // 结束：停台雪花定格 + 启动失败
+      glitchCanvas.style.opacity = '0';
+      failPanel.classList.add('show');
+      playFail();
+      // 2 秒后自动退回启动前画面
+      setTimeout(resetToStart, 2000);
+      return;
+    }
+
+    drawGlitchFrame(t);
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+
+function drawGlitchFrame(progress) {
+  // 屏幕抖动
+  const shakeX = (Math.random() - 0.5) * 20 * (1 - progress * 0.5);
+  const shakeY = (Math.random() - 0.5) * 16 * (1 - progress * 0.5);
+  glitchCtx.setTransform(1, 0, 0, 1, shakeX, shakeY);
+  glitchCtx.clearRect(-shakeX, -shakeY, W + 20, H + 20);
+
+  // 深色背景
+  glitchCtx.fillStyle = '#0a0a0a';
+  glitchCtx.fillRect(-shakeX, -shakeY, W + 20, H + 20);
+
+  // 1. 电视雪花噪点（随机灰度像素块）
+  const noiseDensity = 0.5;
+  for (let i = 0; i < W * H * noiseDensity * 0.004; i++) {
+    const x = Math.random() * W;
+    const y = Math.random() * H;
+    const g = Math.floor(Math.random() * 255);
+    glitchCtx.fillStyle = `rgb(${g},${g},${g})`;
+    glitchCtx.globalAlpha = Math.random() * 0.6;
+    glitchCtx.fillRect(x, y, 2 + Math.random() * 3, 2 + Math.random() * 3);
+  }
+  glitchCtx.globalAlpha = 1;
+
+  // 2. 撕裂横条（随机位置的错位横带）
+  for (let i = 0; i < 4; i++) {
+    if (Math.random() > 0.7) {
+      const y = Math.random() * H;
+      const h = 10 + Math.random() * 40;
+      const offset = (Math.random() - 0.5) * 60;
+      glitchCtx.fillStyle = `rgba(255,255,255,${Math.random() * 0.3})`;
+      glitchCtx.fillRect(offset, y, W, h);
+      glitchCtx.fillStyle = `rgba(0,0,0,${Math.random() * 0.5})`;
+      glitchCtx.fillRect(-offset, y + h, W, h * 0.5);
+    }
+  }
+
+  // 3. 随机全色闪烁（模拟"各种闪光"）
+  if (Math.random() > 0.6) {
+    const colors = ['#fff', '#0ff', '#f0f', '#ff0', '#000', '#f44'];
+    glitchCtx.fillStyle = colors[Math.floor(Math.random() * colors.length)];
+    glitchCtx.globalAlpha = 0.15 + Math.random() * 0.25;
+    glitchCtx.fillRect(0, 0, W, H);
+    glitchCtx.globalAlpha = 1;
+  }
+
+  // 4. 扫描线效果
+  glitchCtx.fillStyle = 'rgba(0,0,0,0.2)';
+  for (let y = 0; y < H; y += 4) {
+    glitchCtx.fillRect(0, y, W, 1);
+  }
+
+  // 5. 中心随机高亮光斑（闪烁）
+  if (Math.random() > 0.5) {
+    const gx = W * 0.3 + Math.random() * W * 0.4;
+    const gy = H * 0.3 + Math.random() * H * 0.4;
+    const grad = glitchCtx.createRadialGradient(gx, gy, 0, gx, gy, 100 + Math.random() * 100);
+    grad.addColorStop(0, 'rgba(255,255,255,0.8)');
+    grad.addColorStop(1, 'transparent');
+    glitchCtx.fillStyle = grad;
+    glitchCtx.fillRect(0, 0, W, H);
+  }
+}
+
+/* ========== 退回启动前画面（保留"已加载"状态，可直接再点启动） ========== */
+function resetToStart() {
+  failPanel.classList.remove('show');
+  glitchCanvas.style.opacity = '0';
+  glitchCtx.setTransform(1, 0, 0, 1, 0, 0);
+  glitchCtx.clearRect(0, 0, W, H);
+  launched = false;
+  showLaunchScene();
+}
+
+retryBtn.addEventListener('click', () => {
+  resetToStart();
+});
+</script>
+</body>
+</html>
